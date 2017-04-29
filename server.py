@@ -2,7 +2,10 @@
 
 import vk_api
 import json
+import multiprocessing
 from multiprocessing import Process, Value, Array
+from time import sleep
+from random import random
 
 def get_wall(user_id, tools):
     """ Пример получения всех постов со стены """
@@ -24,28 +27,47 @@ def get_wall(user_id, tools):
     #print('Posts count:', wall['count'])
     return wall
 
-def get_profile(user_id, vk_session, tools):
+def get_profile(user_id, vk_session, tools, f):
     #basic = api.users.get(user_ids=1, fields='photo,sex,bdate,city,country,education,relation,home_town,lists,personal,about')
-    basic = vk_session.method('users.get', {'user_ids': user_id, 'fields': 'photo,sex,bdate,city,country,education,relation,home_town,lists,personal,about'})
+    try:
+        friends = tools.get_all('friends.get', 1000, {'user_id': user_id})
+    except Exception as e:
+        print(e)
+        friends = None
+    try:
+        basic = vk_session.method('users.get', {'user_ids': user_id, 'fields': 'photo,sex,bdate,city,country,education,relation,home_town,lists,personal,about'})[0]
+    except Exception as e:
+        print(e)
+        basic = None
     #basic.wall = api.wall(owner_id = user_id)
-    wall = get_wall(user_id, tools)
-    print(json.dumps({'basic': basic, 'wall': wall}, indent=4, ensure_ascii=False))
+    try:
+        wall = get_wall(user_id, tools)
+    except Exception as e:
+        print(e)
+        wall = None
+    f.write(json.dumps({'friends': friends, 'basic': basic, 'wall': wall, 'id': user_id, 'groups': None}, indent=4, ensure_ascii=False) + ',\n')
 
 wide_last_id = 1000
 deep_ids = []
 
 def mp(wide_parse, deep_parse):
     parsers = []
-    for cpu in xrange(0, self.cores):
-        parsers.append(Process(target=wide_parse, args=(Value('i', wide_last_id))))
-        parsers.append(Process(target=deep_parse, args=(Array('i', deep_ids))))
+    for cpu in range(0, multiprocessing.cpu_count()):
+        parsers.append(Process(target=wide_parse, args=(Array('i', [wide_last_id]),)))
+    #    parsers.append(Process(target=deep_parse, args=(Array('i', deep_ids),)))
     for parser in parsers:
         parser.start()
     for parser in parsers:
         parser.join()
 
-def wide_parse():
-    pass
+def wide_parse(vk_session, tools, f):
+    def fn (uid):
+        while True:
+            sleep(0.1 * random())
+            uid[0] = uid[0] + 1
+            get_profile(uid[0], vk_session, tools, f)
+
+    return fn
 
 def deep_parse():
     pass
@@ -61,8 +83,12 @@ def main():
 
     tools = vk_api.VkTools(vk_session)
 
-    #mp(wide_parse, deep_parse)
-    get_profile(1, vk_session, tools)
+    f = open('vk-users.json', 'a')
+    f.write('[\n')
+
+    #mp(wide_parse(vk_session, tools, f), deep_parse)
+    for i in range(4015282, 40152820):
+        get_profile(round(random() * 40152820 + 4005282), vk_session, tools, f)
 
 
 if __name__ == '__main__':
